@@ -2,15 +2,20 @@ import streamlit as st
 import os
 import numpy as np
 import gdown
+import os
+import google.generativeai as genai
 from PIL import Image
 from tensorflow.keras.models import load_model
 from tensorflow.keras.applications.resnet_v2 import preprocess_input as resnet_preprocess
 from tensorflow.keras.applications.vgg16 import preprocess_input as vgg_preprocess
 from tensorflow.keras.applications.inception_v3 import preprocess_input as inception_preprocess
+from dotenv import load_dotenv
 
+load_dotenv()
 
 class CornDiseaseApp:
     def __init__(self):
+        self.api_key = os.getenv("GOOGLE_API_KEY")
         self.model_dir = "models"
         self.model_urls = {
             "resnet": "https://drive.google.com/uc?id=1jVmr1kHY8cDSYgJEnIQ-OhqcUV8cj-qM",
@@ -31,19 +36,19 @@ class CornDiseaseApp:
         self.models = self.load_models()
 
     @st.cache_resource(show_spinner=False, hash_funcs={"_thread.RLock": lambda _: None})
-    def load_models(self):
-        os.makedirs(self.model_dir, exist_ok=True)
+    def load_models(_self):
+        os.makedirs(_self.model_dir, exist_ok=True)
         models = {}
         status = st.empty()
 
-        for name in self.model_filenames:
-            model_path = os.path.join(self.model_dir, self.model_filenames[name])
+        for name in _self.model_filenames:
+            model_path = os.path.join(_self.model_dir, _self.model_filenames[name])
 
             if not os.path.exists(model_path):
                 status.info(f"⬇️ Mengunduh model {name}...")
                 try:
                     gdown.download(
-                        url=self.model_urls[name],
+                        url=_self.model_urls[name],
                         output=model_path,
                         quiet=True,
                         fuzzy=True
@@ -92,6 +97,19 @@ class CornDiseaseApp:
         ensemble = np.mean(predictions, axis=0)
         idx = np.argmax(ensemble)
         return self.class_names[idx], float(np.max(ensemble) * 100)
+    
+    def get_disease_info(self, disease_name):
+        if not self.api_key:
+            return "❌ API key tidak tersedia."
+
+        try:
+            genai.configure(api_key=self.api_key)
+            model = genai.GenerativeModel("gemini-pro")
+            prompt = f"Apa itu penyakit tanaman jagung '{disease_name}'? Jelaskan secara singkat gejala dan cara penanggulangannya."
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            return f"❌ Gagal mengambil informasi dari Gemini: {e}"
 
     def run(self):
         st.set_page_config(page_title="Deteksi Penyakit Jagung", page_icon="🌽")
@@ -129,6 +147,11 @@ class CornDiseaseApp:
                 finally:
                     if os.path.exists(path):
                         os.remove(path)
+
+            with st.expander("ℹ️ Info Lengkap Penyakit (via Gemini)"):
+                with st.spinner("Mengambil informasi dari Gemini..."):
+                    info = self.get_disease_info(label)
+                    st.write(info)
 
 
 # ===============================
